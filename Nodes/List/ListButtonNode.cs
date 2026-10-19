@@ -52,8 +52,19 @@ public unsafe class ListButtonNode : ButtonBase {
     }
 
     public bool Selected {
-        get => Component->IsChecked;
-        set => Component->SetChecked(value);
+        // 註：IsChecked 只讀 Flags(0xE8)，不碰 OwnerNode，因此僅需判 Component。
+        get {
+            var component = Component;
+            if (component is null) return false;
+
+            return component->IsChecked;
+        }
+        set {
+            var component = Component;
+            if (component is null) return;
+
+            component->SetChecked(value);
+        }
     }
 
     public SeString Label {

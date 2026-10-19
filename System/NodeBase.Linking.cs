@@ -164,6 +164,10 @@ public abstract unsafe partial class NodeBase {
         }
     }
 
-    private AtkUnitBase* GetAddonForNode(AtkResNode* node)
-        => RaptureAtkUnitManager.Instance()->GetAddonByNode(node);
+    private AtkUnitBase* GetAddonForNode(AtkResNode* node) {
+        var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+        if (raptureAtkUnitManager is null) return null;
+
+        return raptureAtkUnitManager->GetAddonByNode(node);
+    }
 }

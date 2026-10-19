@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -31,11 +32,17 @@ public partial class NodeBase {
     private bool TagListGenerated { get; set; }
     private IOrderedEnumerable<PropertyInfo> OrderedPrimitives => taggedFields.OrderByDescending(property => property.PropertyType.Name);
 
+    // 每次登入會有數十個節點各自重讀自己的 style 檔，而這些檔只由下面的 Save() 改寫，
+    // 所以快取檔案內容、寫入時就地更新。PopulateObject 仍然逐節點照跑，節點狀態與
+    // 沒有快取時相同；Loading 那行 Debug 只在真的讀磁碟時出現。
+    private static readonly ConcurrentDictionary<string, string> StyleFileCache = new(StringComparer.OrdinalIgnoreCase);
+
     public void Save(string filePath) {
         try {
             Log.Debug($"[NodeBase] Saving {GetShortPath(filePath)}");
             var fileText = JsonConvert.SerializeObject(this, Formatting.Indented);
             FilesystemUtil.WriteAllTextSafe(filePath, fileText);
+            StyleFileCache[filePath] = fileText;
         }
         catch (Exception e) {
             Log.Exception(e);
@@ -44,8 +51,11 @@ public partial class NodeBase {
 
     public void Load(string filePath) {
         try {
-            Log.Debug($"[NodeBase] Loading {GetShortPath(filePath)}");
-            var fileData = File.ReadAllText(filePath);
+            if (!StyleFileCache.TryGetValue(filePath, out var fileData)) {
+                Log.Debug($"[NodeBase] Loading {GetShortPath(filePath)}");
+                fileData = File.ReadAllText(filePath);
+                StyleFileCache[filePath] = fileData;
+            }
             if (OnLoadOmittedProperties.Count != 0) {
                 var jObject = JObject.Parse(fileData);
                 foreach (var property in OnLoadOmittedProperties) {

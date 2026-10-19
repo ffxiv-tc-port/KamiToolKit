@@ -205,7 +205,17 @@ public abstract unsafe partial class NodeBase {
     public void ShowTooltip() {
         if (Tooltip is not null && TooltipRegistered) {
             var addon = GetAddonForNode(InternalResNode);
-            AtkStage.Instance()->TooltipManager.ShowTooltip(addon->Id, InternalResNode, Tooltip.Encode());
+            if (addon is null) return;
+
+            // AtkStage.Instance() 可能回 null 指標（說明見 Classes/ColorHelper.cs）。
+            // TooltipManager 是 AtkStage 上的內嵌欄位而非二次指標，所以只要判 Instance() 這一層；
+            // 但對 null 指標取它的位址當 this 去呼叫 [MemberFunction]，
+            // 會在原生端解參考 → try/catch 攔不到的 AccessViolationException。
+            // 取不到就不顯示提示，失敗形式是「沒有 tooltip」—— 無害。
+            var stage = AtkStage.Instance();
+            if (stage is null) return;
+
+            stage->TooltipManager.ShowTooltip(addon->Id, InternalResNode, Tooltip.Encode());
         }
     }
 
@@ -213,7 +223,11 @@ public abstract unsafe partial class NodeBase {
         var addon = GetAddonForNode(InternalResNode);
         if (addon is null) return;
 
-        AtkStage.Instance()->TooltipManager.HideTooltip(addon->Id);
+        // 同上。AtkStage 取不到時整個 tooltip 系統都還不存在，所以「沒隱藏成功」不會留下殘留提示。
+        var stage = AtkStage.Instance();
+        if (stage is null) return;
+
+        stage->TooltipManager.HideTooltip(addon->Id);
     }
 
     private void ShowTooltip(AddonEventData data)

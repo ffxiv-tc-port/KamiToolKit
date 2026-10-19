@@ -39,7 +39,13 @@ public abstract unsafe partial class NativeAddon {
             return;
         }
 
-        var currentAddonCount = RaptureAtkUnitManager.Instance()->AllLoadedUnitsList.Count;
+        var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+        if (raptureAtkUnitManager is null) {
+            Log.Error("ERROR: RaptureAtkUnitManager is unavailable. Aborting allocation.");
+            return;
+        }
+
+        var currentAddonCount = raptureAtkUnitManager->AllLoadedUnitsList.Count;
         if (currentAddonCount >= 200) {
             Log.Warning("WARNING: Current Addon Count is approaching hard limits. Please ensure custom Addons are not being used as overlays.");
         }
@@ -116,10 +122,37 @@ public abstract unsafe partial class NativeAddon {
             Log.Verbose($"[{InternalName}] Open Called");
 
             if (InternalAddon is null) {
+                // 先擋掉才配置：AllocateAddon() 自己雖然也會檢查 RaptureAtkUnitManager，
+                // 但若在它成功之後才擋下初始化，會留下「已配置但沒開啟」的半套狀態，
+                // 下一次 Open() 會走到 else 分支印「Already open」而永遠開不起來。
+                if (RaptureAtkUnitManager.Instance() is null) {
+                    Log.Error("ERROR: RaptureAtkUnitManager is unavailable. Aborting open.");
+                    return;
+                }
+
                 AllocateAddon();
 
                 if (InternalAddon is not null) {
-                    AtkStage.Instance()->RaptureAtkUnitManager->InitializeAddon(InternalAddon, InternalName);
+                    // 使用點重查一次，不沿用上面那個指標。
+                    // AllocateAddon() 的守衛讓這條路目前走不到 null，
+                    // 但那是「前提」不是防護，前提失效時不會有人提醒，所以這裡自己判空。
+                    var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+                    if (raptureAtkUnitManager is null) {
+                        Log.Error("ERROR: RaptureAtkUnitManager became unavailable. Aborting addon initialization.");
+                        return;
+                    }
+
+                    raptureAtkUnitManager->InitializeAddon(InternalAddon, InternalName);
+
+                    // 這一行之後 InternalAddon 還是同一個值，是「前提」不是保證：
+                    // InitializeAddon() 會經由我們自己覆寫的 vf1 重入回本類別，
+                    // 而遊戲的 addon 釋放路徑會呼叫我們的 vf0（見 NativeAddon.Functions.cs 的 Destructor），
+                    // 那裡會把 InternalAddon 設回 null。前提不成立時下一行就是對位址 0 的呼叫。
+                    if (InternalAddon is null) {
+                        Log.Error("ERROR: Addon was torn down during initialization. Aborting open.");
+                        return;
+                    }
+
                     InternalAddon->Open((uint)depthLayer);
                     disposeHandle = GCHandle.Alloc(this);
                 }
@@ -129,6 +162,17 @@ public abstract unsafe partial class NativeAddon {
             }
         });
 
+    /// <summary>
+    ///     Closes this instance of Addon
+    /// </summary>
+    /// <remarks>
+    ///     這裡看起來像「跨幀持有原生指標」，但不是：委派捕獲的是 this，
+    ///     每次執行都重新讀取 InternalAddon 欄位；而該欄位由我們自己覆寫的 vf0
+    ///     （NativeAddon.Functions.cs 的 Destructor）在遊戲釋放這塊記憶體的同一個呼叫框架內設回 null
+    ///     ⇒ 欄位非 null 就代表這塊記憶體尚未被釋放（釋放路徑一定會以刪除旗標呼叫 vf0）。
+    ///     🔴 這個結論的前提是我們的自訂虛擬表真的裝上去了（RegisterVirtualTable）；
+    ///     若哪天改成不覆寫 vf0，這裡就必須改回「每次重新查詢 addon」。
+    /// </remarks>
     public void Close()
         => DalamudInterface.Instance.Framework.RunOnFrameworkThread(() => {
             Log.Verbose($"[{InternalName}] Close");

@@ -85,12 +85,12 @@ public unsafe class Timeline : IDisposable {
     /// <param name="force">Force the animation to restart even if it was already playing</param>
     public void PlayAnimation(int labelId, bool force = false) {
         if (InternalTimeline->ActiveLabelId != labelId || force) {
-            InternalTimeline->PlayAnimation(AtkTimelineJumpBehavior.Start, (byte)labelId);
+            InternalTimeline->PlayAnimation(AtkTimelineJumpBehavior.Start, (ushort)labelId);
         }
     }
 
     public void StopAnimation()
-        => InternalTimeline->PlayAnimation(AtkTimelineJumpBehavior.Start, 0);
+        => InternalTimeline->PlayAnimation(AtkTimelineJumpBehavior.Start, (ushort)0);
 
     public void UpdateKeyFrame(
         int frameId, KeyFrameGroupType groupType, Vector2? position = null, byte? alpha = null, Vector3? addColor = null, Vector3? multiplyColor = null,

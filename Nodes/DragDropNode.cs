@@ -228,9 +228,20 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
 
     // Show fancy tooltip for the currently stored data
     public void ShowTooltip(AtkTooltipManager.AtkTooltipType type, ActionKind actionKind) {
-        if (AtkStage.Instance()->DragDropManager.IsDragging) return;
+        // AtkStage.Instance() 可能回 null 指標（說明見 Classes/ColorHelper.cs）。
+        // DragDropManager 與 TooltipManager 都是 AtkStage 上的內嵌欄位而非二次指標，
+        // 所以只要判 Instance() 這一層；但對 null 指標取它們的位址，
+        // 而 ShowTooltip 是 [MemberFunction]，會在原生端解參考 → try/catch 攔不到的 AccessViolationException。
+        // 取不到就不顯示提示，失敗形式是「沒有 tooltip」—— 無害。
+        var stage = AtkStage.Instance();
+        if (stage is null) return;
 
-        var addon = RaptureAtkUnitManager.Instance()->GetAddonByNode(InternalResNode);
+        if (stage->DragDropManager.IsDragging) return;
+
+        var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+        if (raptureAtkUnitManager is null) return;
+
+        var addon = raptureAtkUnitManager->GetAddonByNode(InternalResNode);
         if (addon is null) return;
 
         var tooltipArgs = new AtkTooltipManager.AtkTooltipArgs();
@@ -238,7 +249,7 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
         tooltipArgs.ActionArgs.Id = Payload.Int2;
         tooltipArgs.ActionArgs.Kind = (DetailKind)actionKind;
 
-        AtkStage.Instance()->TooltipManager.ShowTooltip(
+        stage->TooltipManager.ShowTooltip(
             AtkTooltipManager.AtkTooltipType.Action,
             addon->Id,
             InternalResNode,

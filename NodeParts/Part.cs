@@ -132,12 +132,25 @@ public unsafe class Part : IDisposable {
         }
     }
 
-    private string GetThemePathModifier() => AtkStage.Instance()->AtkUIColorHolder->ActiveColorThemeType switch {
-        1 => "uld/light",
-        2 => "uld/third",
-        3 => "uld/fourth",
-        _ => "uld",
-    };
+    private const string DefaultThemePathModifier = "uld";
+
+    private string GetThemePathModifier() {
+        // 同 Classes/ColorHelper.cs：AtkStage.Instance() 可能回 null 指標，
+        // AtkUIColorHolder 也是純指標欄位。取不到就退回預設佈景，
+        // 結果與 ActiveColorThemeType == 0 相同（原本 switch 的 _ 分支）。
+        var stage = AtkStage.Instance();
+        if (stage is null) return DefaultThemePathModifier;
+
+        var colorHolder = stage->AtkUIColorHolder;
+        if (colorHolder is null) return DefaultThemePathModifier;
+
+        return colorHolder->ActiveColorThemeType switch {
+            1 => "uld/light",
+            2 => "uld/third",
+            3 => "uld/fourth",
+            _ => DefaultThemePathModifier,
+        };
+    }
 
     /// <summary>
     ///     Loads a game icon via id

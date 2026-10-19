@@ -111,7 +111,10 @@ public abstract unsafe class DropDownNode<T, TU> : SimpleComponentNode where T :
         Timeline?.PlayAnimation(IsCollapsed ? 4 : 11);
         OptionListNode.Toggle(!IsCollapsed);
 
-        var parentAddon = RaptureAtkUnitManager.Instance()->GetAddonByNode(InternalResNode);
+        var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+        if (raptureAtkUnitManager is null) return;
+
+        var parentAddon = raptureAtkUnitManager->GetAddonByNode(InternalResNode);
         if (parentAddon is not null) {
 
             if (!IsCollapsed) {

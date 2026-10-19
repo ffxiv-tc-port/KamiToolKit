@@ -18,13 +18,37 @@ public abstract unsafe class ButtonBase : ComponentNode<AtkComponentButton, AtkU
     public Action? OnClick { get; set; }
 
     public bool IsEnabled {
-        get => Component->IsEnabled;
-        set => Component->SetEnabledState(value);
+        // ⚠️ CS 的 AtkComponentButton.IsEnabled 定義是 OwnerNode->AtkResNode.NodeFlags，
+        // 會裸解參考 OwnerNode(0xA8)，所以 Component 與 OwnerNode 都要判空才能讀。
+        get {
+            var component = Component;
+            if (component is null) return false;
+            if (((AtkComponentBase*)component)->OwnerNode is null) return false;
+
+            return component->IsEnabled;
+        }
+        set {
+            var component = Component;
+            if (component is null) return;
+
+            component->SetEnabledState(value);
+        }
     }
 
     public bool IsChecked {
-        get => Component->IsChecked;
-        set => Component->SetChecked(value);
+        // 註：IsChecked 只讀 Flags(0xE8)，不碰 OwnerNode，因此僅需判 Component。
+        get {
+            var component = Component;
+            if (component is null) return false;
+
+            return component->IsChecked;
+        }
+        set {
+            var component = Component;
+            if (component is null) return;
+
+            component->SetChecked(value);
+        }
     }
 
     private void ClickHandler(AddonEventData data) {

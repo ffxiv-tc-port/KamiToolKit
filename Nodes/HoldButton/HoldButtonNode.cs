@@ -85,12 +85,15 @@ public unsafe class HoldButtonNode : ComponentNode<AtkComponentHoldButton, AtkUl
     }
 
     public void Reset() {
-        Component->IsTargetReached = false;
-        Component->IsEventFired = false;
-        Component->Progress.StartValue = 0;
-        Component->Progress.TargetValue = 0;
-        Component->Progress.CurrentValue = 0;
-        Component->Progress.EndValue = 0;
+        var component = Component;
+        if (component is null) return;
+
+        component->IsTargetReached = false;
+        component->IsEventFired = false;
+        component->Progress.StartValue = 0;
+        component->Progress.TargetValue = 0;
+        component->Progress.CurrentValue = 0;
+        component->Progress.EndValue = 0;
     }
 
     private void BuildTimelines() {

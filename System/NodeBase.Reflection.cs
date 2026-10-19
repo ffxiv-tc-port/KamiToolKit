@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -8,6 +9,10 @@ using KamiToolKit.Classes;
 namespace KamiToolKit.System;
 
 public abstract partial class NodeBase {
+    // 成員清單只依執行期型別而定，每個型別算一次；走訪可能從任何執行緒進來（例：插件在背景執行緒 Dispose）。
+    // 每次走訪仍逐一 GetValue，所以讀到的永遠是當下的欄位值。
+    private static readonly ConcurrentDictionary<Type, (MemberInfo[] Nodes, MemberInfo[] Enumerables)> ChildMemberCache = new();
+
     private void VisitChildren(Action<NodeBase?> visitAction) {
         try {
             foreach (var child in GetChildren(this)) {
@@ -22,12 +27,14 @@ public abstract partial class NodeBase {
     }
 
     private IEnumerable<NodeBase?> GetChildren(NodeBase parent) {
-        foreach (var member in GetNodeMembers(parent)) {
+        var (nodeMembers, enumerableMembers) = ChildMemberCache.GetOrAdd(parent.GetType(), static type => (GetNodeMembers(type), GetEnumerableMemberInfo(type)));
+
+        foreach (var member in nodeMembers) {
             if (GetNode(member, parent) is { } node)
                 yield return node;
         }
 
-        foreach (var enumerableMember in GetEnumerableMemberInfo(parent)) {
+        foreach (var enumerableMember in enumerableMembers) {
             if (GetEnumerable(enumerableMember, parent) is { } enumerable) {
                 foreach (var child in enumerable) {
                     yield return child;
@@ -39,11 +46,11 @@ public abstract partial class NodeBase {
     private static bool IsNodeMember(MemberInfo member)
         => typeof(NodeBase).IsAssignableFrom(GetMemberType(member));
 
-    private static IEnumerable<MemberInfo> GetNodeMembers(NodeBase parent)
-        => GetMemberInfo(parent).Where(IsNodeMember).Where(IsMemberSingleIndexable);
+    private static MemberInfo[] GetNodeMembers(Type type)
+        => GetMemberInfo(type).Where(IsNodeMember).Where(IsMemberSingleIndexable).ToArray();
 
-    private static IEnumerable<MemberInfo> GetMemberInfo(NodeBase node)
-        => node.GetType().GetMembers(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+    private static IEnumerable<MemberInfo> GetMemberInfo(Type type)
+        => type.GetMembers(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
             .Where(member => member.MemberType is MemberTypes.Field or MemberTypes.Property);
 
     private static NodeBase? GetNode(MemberInfo member, NodeBase node) => member.MemberType switch {
@@ -52,8 +59,8 @@ public abstract partial class NodeBase {
         _ => null,
     };
 
-    private static IEnumerable<MemberInfo> GetEnumerableMemberInfo(NodeBase node)
-        => GetMemberInfo(node).Where(IsMemberEnumerable).Where(IsBaseNodeEnumerable).Where(IsMemberSingleIndexable);
+    private static MemberInfo[] GetEnumerableMemberInfo(Type type)
+        => GetMemberInfo(type).Where(IsMemberEnumerable).Where(IsBaseNodeEnumerable).Where(IsMemberSingleIndexable).ToArray();
 
     private static bool IsMemberEnumerable(MemberInfo member)
         => GetMemberType(member)?.GetInterfaces().Contains(typeof(IEnumerable)) ?? false;

@@ -10,13 +10,22 @@ internal static class NativeMemoryHelper {
 
     public static unsafe T* UiAlloc<T>(uint elementCount = 1, ulong alignment = 8) where T : unmanaged {
         var allocSize = (ulong)sizeof(T) * elementCount;
-        var memory = (T*)IMemorySpace.GetUISpace()->Malloc(allocSize, alignment);
 
-        IMemorySpace.Memset(memory, 0, allocSize);
+        // 判空必須排在 Memset 之前：先 Memset 再判空的話，
+        // 配置失敗時會先對位址 0 寫入 allocSize 個位元組 —— 那是 try/catch 攔不到的
+        // AccessViolationException，下面那個 throw 永遠走不到。
+        var uiSpace = IMemorySpace.GetUISpace();
+        if (uiSpace is null) {
+            throw new Exception($"UI memory space is unavailable, cannot allocate memory for {typeof(T)}");
+        }
+
+        var memory = (T*)uiSpace->Malloc(allocSize, alignment);
 
         if (memory is null) {
             throw new Exception($"Unable to allocate memory for {typeof(T)}");
         }
+
+        IMemorySpace.Memset(memory, 0, allocSize);
 
         return memory;
     }
@@ -28,7 +37,13 @@ internal static class NativeMemoryHelper {
         => IMemorySpace.Free(memory, (ulong)sizeof(T) * elementCount);
 
     public static unsafe T* Create<T>() where T : unmanaged, ICreatable {
-        var memory = IMemorySpace.GetUISpace()->Create<T>();
+        // 同上：GetUISpace() 回 null 時 ->Create<T>() 是對位址 0 的呼叫，不是可攔截的例外。
+        var uiSpace = IMemorySpace.GetUISpace();
+        if (uiSpace is null) {
+            throw new Exception($"UI memory space is unavailable, cannot create {typeof(T)}");
+        }
+
+        var memory = uiSpace->Create<T>();
 
         if (memory is null) {
             throw new Exception($"Unable to allocate memory for {typeof(T)}");
